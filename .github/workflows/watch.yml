@@ -1,0 +1,50 @@
+name: BCIT watcher
+
+on:
+  schedule:
+    - cron: "7,22,37,52 * * * *"   # every 15 minutes (times are UTC)
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "What to run"
+        type: choice
+        default: check
+        options:
+          - check
+          - show
+          - phone
+          - email
+
+permissions:
+  contents: read
+  actions: write   # lets the job switch itself off after sending an alert
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install packages
+        run: pip install requests beautifulsoup4
+
+      - name: Run watcher
+        id: watch
+        env:
+          EMAIL_ADDRESS: ${{ secrets.EMAIL_ADDRESS }}
+          EMAIL_APP_PASSWORD: ${{ secrets.EMAIL_APP_PASSWORD }}
+          PUSHOVER_USER_KEY: ${{ secrets.PUSHOVER_USER_KEY }}
+          PUSHOVER_APP_TOKEN: ${{ secrets.PUSHOVER_APP_TOKEN }}
+        run: python watcher_cloud.py "${{ inputs.mode || 'check' }}"
+
+      - name: Switch watcher off after alert
+        if: steps.watch.outputs.alert == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: gh workflow disable watch.yml
